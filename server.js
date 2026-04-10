@@ -141,6 +141,55 @@ app.post('/send', async (req, res) => {
   }
 });
 
+// GET /debug?sessionid=xxx — returns raw status code and headers from Instagram
+app.get('/debug', async (req, res) => {
+  const { sessionid } = req.query;
+  if (!sessionid) return res.status(400).json({ ok: false, error: 'sessionid required' });
+
+  try {
+    // Test 1: homepage without proxy
+    const r1 = await fetch('https://www.instagram.com/', {
+      headers: { 'Cookie': `sessionid=${sessionid}` },
+      redirect: 'manual',
+    });
+
+    // Test 2: homepage with proxy
+    const r2 = await fetch('https://www.instagram.com/', {
+      headers: { 'Cookie': `sessionid=${sessionid}` },
+      redirect: 'manual',
+      agent: proxyAgent,
+    });
+
+    // Test 3: API with proxy
+    const csrf2 = r2.headers.get('set-cookie')?.match(/csrftoken=([^;]+)/)?.[1] || 'missing';
+    const r3 = await fetch('https://www.instagram.com/api/v1/accounts/current_user/?edit=true', {
+      headers: {
+        'Cookie': `sessionid=${sessionid}; csrftoken=${csrf2}`,
+        'X-CSRFToken': csrf2,
+        'X-IG-App-ID': '936619743392459',
+        'X-Instagram-AJAX': '1',
+        'X-Requested-With': 'XMLHttpRequest',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Referer': 'https://www.instagram.com/',
+      },
+      redirect: 'manual',
+      agent: proxyAgent,
+    });
+
+    const body3 = r3.status < 400 ? await r3.json().catch(() => 'not json') : await r3.text().then(t => t.slice(0, 200));
+
+    res.json({
+      ok: true,
+      no_proxy: { status: r1.status, location: r1.headers.get('location') },
+      with_proxy: { status: r2.status, csrf: csrf2, location: r2.headers.get('location') },
+      api_with_proxy: { status: r3.status, body: body3 },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get('/health', (_, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3001;
