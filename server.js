@@ -31,13 +31,25 @@ app.use((req, res, next) => {
 });
 
 async function getCsrfToken(sessionid) {
+  // Try without proxy first (just to get CSRF cookie)
+  try {
+    const res = await fetch('https://www.instagram.com/', {
+      headers: { 'Cookie': `sessionid=${sessionid}` },
+      redirect: 'manual',
+    });
+    const setCookie = res.headers.raw?.['set-cookie']?.join(';') || res.headers.get('set-cookie') || '';
+    const match = setCookie.match(/csrftoken=([^;]+)/);
+    if (match?.[1]) return match[1];
+  } catch { /* fallback */ }
+
+  // Fallback: try with proxy
   try {
     const res = await fetch('https://www.instagram.com/', {
       headers: { 'Cookie': `sessionid=${sessionid}` },
       redirect: 'manual',
       agent: proxyAgent,
     });
-    const setCookie = res.headers.get('set-cookie') || '';
+    const setCookie = res.headers.raw?.['set-cookie']?.join(';') || res.headers.get('set-cookie') || '';
     const match = setCookie.match(/csrftoken=([^;]+)/);
     return match?.[1] || 'missing';
   } catch { return 'missing'; }
