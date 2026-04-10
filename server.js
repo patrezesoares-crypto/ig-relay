@@ -172,12 +172,15 @@ app.get('/debug', async (req, res) => {
       agent: proxyAgent,
     });
 
-    // Test 3: API with proxy
-    const csrf2 = r2.headers.get('set-cookie')?.match(/csrftoken=([^;]+)/)?.[1] || 'missing';
+    // Extract CSRF from no-proxy response
+    const allCookies1 = r1.headers.raw()?.['set-cookie']?.join(';') || r1.headers.get('set-cookie') || '';
+    const csrf1 = allCookies1.match(/csrftoken=([^;]+)/)?.[1] || 'missing';
+
+    // Test 3: API without proxy (direct from Railway server)
     const r3 = await fetch('https://www.instagram.com/api/v1/accounts/current_user/?edit=true', {
       headers: {
-        'Cookie': `sessionid=${sessionid}; csrftoken=${csrf2}`,
-        'X-CSRFToken': csrf2,
+        'Cookie': `sessionid=${sessionid}; csrftoken=${csrf1}`,
+        'X-CSRFToken': csrf1,
         'X-IG-App-ID': '936619743392459',
         'X-Instagram-AJAX': '1',
         'X-Requested-With': 'XMLHttpRequest',
@@ -186,16 +189,15 @@ app.get('/debug', async (req, res) => {
         'Referer': 'https://www.instagram.com/',
       },
       redirect: 'manual',
-      agent: proxyAgent,
     });
 
-    const body3 = r3.status < 400 ? await r3.json().catch(() => 'not json') : await r3.text().then(t => t.slice(0, 200));
+    const body3 = r3.status < 400 ? await r3.json().catch(() => 'not json') : await r3.text().then(t => t.slice(0, 300));
 
     res.json({
       ok: true,
-      no_proxy: { status: r1.status, location: r1.headers.get('location') },
-      with_proxy: { status: r2.status, csrf: csrf2, location: r2.headers.get('location') },
-      api_with_proxy: { status: r3.status, body: body3 },
+      no_proxy: { status: r1.status, csrf: csrf1 },
+      with_proxy: { status: r2.status },
+      api_no_proxy: { status: r3.status, body: body3 },
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
